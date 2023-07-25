@@ -1,0 +1,91 @@
+Option Explicit
+
+Sub Attach_MP3_XML()
+    ' Add references to Microsoft ActiveX Data Objects Library and Microsoft XML, v6.0
+    ' Go to Tools -> References to include these
+
+    Dim oFile As Object
+    Dim oFSO As Object
+    Dim sXMLDir As String, sTXTDir As String
+    Dim sXMLFile As String, sSlideName As String
+    Dim sTXTFile As String
+    Dim sTarget As String, sMedia As String
+    Dim xmlDoc As MSXML2.DOMDocument60
+    Dim xmlNodeList As MSXML2.IXMLDOMNodeList
+    Dim xmlNode As MSXML2.IXMLDOMNode
+    Dim oPPT As PowerPoint.Presentation
+    Dim oSlide As PowerPoint.Slide
+    Dim oShape As PowerPoint.shape
+
+    ' Set PowerPoint presentation
+    Set oPPT = ActivePresentation
+
+    ' Create File System Object
+    Set oFSO = CreateObject("Scripting.FileSystemObject")
+
+    ' Get the XML directory
+    sXMLDir = InputBox("Enter XML Directory Path:", "XML Directory")
+
+    ' Get the MP3 directory
+    sTXTDir = InputBox("Enter MP3 Directory Path:", "MP3 Directory")
+
+    sXMLFile = Dir(sXMLDir & "\*.xml.rels")
+
+    Do While Len(sXMLFile) > 0
+        Debug.Print "Processing: " & sXMLFile
+        ' Parse XML
+        Set xmlDoc = New MSXML2.DOMDocument60
+        xmlDoc.async = False: xmlDoc.validateOnParse = False
+        xmlDoc.Load (sXMLDir & "\" & sXMLFile)
+
+        ' Extract media file name
+        Set xmlNodeList = xmlDoc.SelectNodes("//@Target")
+        For Each xmlNode In xmlNodeList
+            sTarget = xmlNode.text
+            If InStr(sTarget, ".m4a") > 0 Then
+                sMedia = Mid(sTarget, InStrRev(sTarget, "/") + 1)
+                sMedia = Replace(sMedia, ".m4a", ".mp3")
+
+                ' Read MP3 file
+                sTXTFile = sTXTDir & "\" & sMedia
+                If oFSO.FileExists(sTXTFile) Then
+                    Debug.Print "Found MP3 file: " & sTXTFile
+                Else
+                    Debug.Print "MP3 file not found: " & sTXTFile
+                End If
+
+                ' Extract slide number from XML filename
+                sSlideName = Replace(sXMLFile, "slide", "")
+                sSlideName = Replace(sSlideName, ".xml.rels", "")
+
+                ' Insert audio to the corresponding slide
+                If IsNumeric(sSlideName) And CInt(sSlideName) <= oPPT.Slides.Count Then
+                    Debug.Print "Adding audio to slide: " & sSlideName
+                    Set oSlide = oPPT.Slides(CInt(sSlideName))
+                    Set oShape = oSlide.Shapes.AddMediaObject2(sTXTFile, msoFalse, msoTrue, -1, -1)
+                    
+                    ' Adjust the size and position of the audio icon
+                    With oShape
+                        .LockAspectRatio = msoFalse
+                        .Width = 5
+                        .Height = 5
+                        .Left = oSlide.Master.Width - .Width - 10
+                        .Top = oSlide.Master.Height - .Height - 10
+                        
+                        ' Hide during show and set it to start with click sequence
+                        .AnimationSettings.PlaySettings.HideWhileNotPlaying = True
+                        .AnimationSettings.Animate = msoTrue
+                        .AnimationSettings.AnimationOrder = 1
+                    End With
+                Else
+                    Debug.Print "Invalid slide number: " & sSlideName
+                End If
+            End If
+        Next xmlNode
+
+        ' Get next XML file
+        sXMLFile = Dir
+    Loop
+    Debug.Print "Finished processing."
+End Sub
+
